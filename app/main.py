@@ -4,7 +4,8 @@ print(sys.path)
 from fastapi import FastAPI, HTTPException
 from app.services.opensky import get_live_flights
 from app.services.weather import get_current_weather  # Import our new service
-from app.services.llm_translator import translate_weather_to_english
+from app.services.llm_translator import translate_weather_to_english, explain_flight_disruption
+from app.services.vector_store import retrieve_airport_rules
 
 app = FastAPI(
     title="Intelligent Flight Disruption Communicator",
@@ -64,4 +65,50 @@ async def explain_weather(station_id: str):
         "station": station_id.upper(),
         "raw_data": raw_metar,
         "ai_explanation": explanation
+    }
+
+@app.get("/api/rules/search")
+async def search_airport_rules(query: str):
+    """
+    Test endpoint to search our Vector Database for relevant airport rules.
+    """
+    # Query the ChromaDB
+    retrieved_rule = retrieve_airport_rules(query_text=query)
+    
+    return {
+        "status": "success",
+        "search_term": query,
+        "retrieved_context": retrieved_rule
+    }
+
+
+@app.get("/api/disruption/{station_id}/explain")
+async def get_disruption_explanation(station_id: str):
+    """
+    The Master RAG Endpoint: Combines live weather, vector DB rules, and AI generation.
+    """
+    station_id = station_id.upper()
+    
+    # Step 1: Fetch the live weather (The context)
+    weather_data = get_current_weather(station_id)
+    if not weather_data:
+        raise HTTPException(status_code=404, detail="Weather not found.")
+    raw_metar = weather_data["raw_metar"]
+    
+    # Step 2: Retrieve relevant airport rule from ChromaDB (The Retrieval)
+    # We pass the raw weather string into the Vector DB. 
+    # ChromaDB will figure out if the weather matches any of our seeded rules!
+    rule = retrieve_airport_rules(query_text=raw_metar)
+    
+    # Step 3: Generate the explanation using Groq (The Generation)
+    final_explanation = explain_flight_disruption(raw_metar=raw_metar, airport_rule=rule)
+    
+    return {
+        "status": "success",
+        "station": station_id,
+        "backend_diagnostics": {
+            "live_weather_used": raw_metar,
+            "database_rule_retrieved": rule
+        },
+        "passenger_notification": final_explanation
     }
