@@ -36,17 +36,30 @@ def seed_database():
 
 def retrieve_airport_rules(query_text: str, n_results: int = 1) -> str:
     """
-    Searches the database for rules matching the current weather or disruption.
+    Searches the database for rules matching the current weather.
+    Includes a strict distance threshold to prevent forced matches.
     """
     results = collection.query(
         query_texts=[query_text],
-        n_results=n_results
+        n_results=n_results,
+        include=['documents', 'distances'] 
     )
     
-    # Extract the retrieved text document
     if results['documents'] and len(results['documents'][0]) > 0:
+        distance_score = results['distances'][0][0]
+        
+        # Let's print the actual math to the terminal so we can see it!
+        print("\n" + "-"*40)
+        print(f"🧠 RAG DEBUG - ChromaDB Vector Distance: {distance_score}")
+        print("-"*40 + "\n")
+        
+        # We are tightening the threshold from 1.2 to 1.0. 
+        # (In Chroma L2 distance, a lower number means a closer match).
+        if distance_score > 1.0:
+            return "Weather is clear. Normal operations. No specific disruption rules triggered."
+            
         return results['documents'][0][0]
-    return "No specific operational rules found for this condition."
-
+        
+    return "Weather is clear. Normal operations. No specific disruption rules triggered."
 # Ensure the database is seeded when this module is imported
 seed_database()

@@ -38,7 +38,7 @@ def translate_weather_to_english(raw_metar: str) -> str:
                     "content": f"Here is the current weather data: {raw_metar}",
                 }
             ],
-            model="llama-3.3-70b-versatile", 
+            model="llama-3.1-8b-instant", 
             temperature=0.3, # A lower temperature keeps the AI factual and prevents hallucinations
         )
         
@@ -56,20 +56,21 @@ def translate_weather_to_english(raw_metar: str) -> str:
 
 def explain_flight_disruption(raw_metar: str, airport_rule: str) -> str:
     """
-    The RAG Engine: Combines live weather and retrieved airport rules to explain a delay.
+    The RAG Engine: Combines live weather and retrieved airport rules to provide a status update.
     """
     system_prompt = """
-    You are an empathetic airline customer service agent. A passenger's flight is currently delayed.
-    Your job is to explain exactly WHY it is delayed by combining the current weather and the airport's operational rules.
+    You are an empathetic airline customer service agent communicating with a passenger.
+    Your job is to provide a flight status update based STRICTLY on the provided weather and operational rules.
     
     Guidelines:
-    - Keep it to 1 or 2 comforting sentences.
-    - Do NOT use any aviation jargon (like METAR, knots, or runway numbers).
-    - Explain the weather condition AND the specific action the airport is taking (e.g., plowing snow, spacing planes out).
+    - If the operational rule states "Normal operations", inform the passenger their flight is proceeding on time with good weather.
+    - If a specific disruption rule is provided, explain the delay empathetically.
+    - NEVER invent or hallucinate reasons for a delay (like mechanical issues). Only use the provided context.
+    - Keep it to 1 or 2 short sentences.
+    - Do NOT use aviation jargon (like METAR, knots, or runway numbers).
     """
     
-    # This is where the "Augmented" part of RAG happens. We inject our data into the prompt.
-    user_prompt = f"Current Weather: {raw_metar}\nAirport Operational Rule: {airport_rule}\n\nPlease explain the delay to the passenger."
+    user_prompt = f"Current Weather: {raw_metar}\nAirport Operational Rule: {airport_rule}\n\nPlease provide the passenger with their status update."
     
     try:
         chat_completion = client.chat.completions.create(
@@ -77,10 +78,10 @@ def explain_flight_disruption(raw_metar: str, airport_rule: str) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            model="llama3-8b-8192",
-            temperature=0.2, # Extremely low temperature so it relies heavily on our provided rule
+            model="llama-3.1-8b-instant",
+            temperature=0.1, # Dropping temperature even lower to strictly enforce factual reporting
         )
         return chat_completion.choices[0].message.content.strip()
     except Exception as e:
         print(f"Groq RAG Error: {e}")
-        return "Your flight is currently delayed due to local weather conditions. We will update you shortly."
+        return "We are currently checking your flight status. Please hold."
